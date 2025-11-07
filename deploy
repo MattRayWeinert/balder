@@ -1,0 +1,2 @@
+source /Users/testaccount/IdeaProjects/trade/.venv/bin/activate
+python -m streamlit run /Users/testaccount/IdeaProjects/trade/trend_app.py
