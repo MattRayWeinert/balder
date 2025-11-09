@@ -1,62 +1,63 @@
-# BALDER - Trade Advisor
+# BALDER - Trading Signals App
 
-A sophisticated trading algorithm application for analyzing futures markets with real-time signals and backtesting capabilities.
+Full-stack trading application with FastAPI backend and React frontend.
 
-## Features
+## Quick Start
 
-- **Live Trade Signals**: Real-time buy/sell signals for futures contracts (ES, NQ, YM, CL, GC)
-- **Position Tracking**: Track open positions with real-time PnL calculation
-- **Backtesting**: Test the algorithm on historical data
-- **Multi-Timeframe Analysis**: Analyzes multiple timeframes for confirmation
-- **Custom Indicators**: EMA, RSI, ATR, MACD, ADX, Bollinger Bands, and more
-
-## Trading Strategy
-
-- **1m Interval**: EMA pullback strategy (catches bounces off moving averages)
-- **2m Interval**: Breakout strategy (catches momentum through significant levels)
-
-## ⚠️ Important Notice
-
-This app uses Yahoo Finance data via yfinance, which is **delayed by 15-20 minutes**.
-
-**Safe for:**
-- Backtesting
-- Strategy development
-- Paper trading
-- Educational purposes
-
-**NOT suitable for:**
-- Live trading decisions
-- Real-time scalping
-- Actual trade execution
-
-For live trading, use real-time data from Interactive Brokers, TradingView, or your broker's platform.
-
-## Installation
-
+### Start Backend (Terminal 1)
 ```bash
-pip install -r requirements.txt
+cd backend
+source venv/bin/activate
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-## Usage
-
+### Start Frontend (Terminal 2)
 ```bash
-streamlit run trend_app.py
+cd frontend
+npm run dev
 ```
 
-## Access
+### Access App
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- Passcode: `000`
 
-Default passcode: `000`
+## Or Use Scripts
 
-## Technology Stack
+```bash
+./start-backend.sh    # Terminal 1
+./start-frontend.sh   # Terminal 2
+./start-all.sh        # Start both (background)
+```
 
-- **Streamlit**: Web app framework
-- **yfinance**: Market data
-- **ta**: Technical analysis library
-- **Plotly**: Interactive charts
-- **Pandas**: Data manipulation
+## Project Structure
 
-## License
+```
+trade/
+├── backend/          # FastAPI Python backend
+│   ├── main.py
+│   ├── core/        # Trading logic
+│   └── api/         # API endpoints
+├── frontend/        # React TypeScript frontend  
+│   └── src/
+└── trend_app.py     # Original Streamlit app
+```
 
-Private use only.
+## Troubleshooting
 
+**Backend returns 0 values:**
+1. Kill backend: `lsof -ti:8000 | xargs kill -9`
+2. Clear cache: `find backend -name "__pycache__" -exec rm -rf {} +`
+3. Restart backend manually
+
+**CORS errors:**
+- Make sure backend is on port 8000
+- Make sure frontend is on port 5173
+- Hard refresh browser: `Cmd+Shift+R`
+
+**Port already in use:**
+```bash
+lsof -ti:8000 | xargs kill -9  # Backend
+lsof -ti:5173 | xargs kill -9  # Frontend
+```
