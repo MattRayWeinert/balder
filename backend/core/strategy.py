@@ -4,14 +4,7 @@ Trading strategy logic for scalping futures
 import pandas as pd
 import yfinance as yf
 from typing import Optional, Dict, Any
-from functools import lru_cache
-import time
 from .indicators import add_indicators, is_us_rth
-
-
-# Cache timestamp tracking
-_cache_timestamps = {}
-CACHE_TTL = 60  # Cache for 60 seconds
 
 
 def get_higher_row_at_or_before(df_hi: pd.DataFrame, ts):
@@ -292,29 +285,7 @@ def _fetch_market_data_uncached(ticker: str, interval: str, period: str) -> pd.D
 def fetch_market_data(ticker: str, interval: str, period: str = "3d") -> pd.DataFrame:
     """
     Fetch and prepare market data with indicators.
-    Uses time-based caching to avoid repeated yfinance calls.
-    """
-    cache_key = f"{ticker}_{interval}_{period}"
-    current_time = time.time()
-    
-    # Check if cache is still valid
-    if cache_key in _cache_timestamps:
-        cache_time = _cache_timestamps[cache_key]
-        if current_time - cache_time < CACHE_TTL:
-            print(f"🚀 Using cached data for {ticker} @ {interval} (age: {int(current_time - cache_time)}s)")
-            # Data is still cached in _fetch_market_data_cached
-            return _fetch_market_data_cached(ticker, interval, period, int(cache_time))
-    
-    # Cache expired or doesn't exist, fetch fresh data
-    _cache_timestamps[cache_key] = current_time
-    return _fetch_market_data_cached(ticker, interval, period, int(current_time))
-
-
-@lru_cache(maxsize=32)
-def _fetch_market_data_cached(ticker: str, interval: str, period: str, cache_time: int) -> pd.DataFrame:
-    """
-    LRU cached version with time component.
-    cache_time is used as part of the key to invalidate cache after TTL.
+    Always pulls fresh data from yfinance.
     """
     return _fetch_market_data_uncached(ticker, interval, period)
 

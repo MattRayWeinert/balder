@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { runBacktest, BacktestRequest, BacktestResponse } from '../services/api'
-import { Play, TrendingUp, TrendingDown } from 'lucide-react'
+import { Play, TrendingUp, TrendingDown, Calendar } from 'lucide-react'
 import './Backtest.css'
 
 interface BacktestProps {
@@ -25,6 +25,7 @@ function Backtest({ passcode }: BacktestProps) {
   const [riskFactor, setRiskFactor] = useState(1.0)
   const [riskReward, setRiskReward] = useState(2.0)
   const [results, setResults] = useState<BacktestResponse | null>(null)
+  const dateInputRef = useRef<HTMLInputElement>(null)
 
   const mutation = useMutation({
     mutationFn: (request: BacktestRequest) => runBacktest(passcode, request),
@@ -73,37 +74,51 @@ function Backtest({ passcode }: BacktestProps) {
             </select>
           </div>
 
-          <div className="control-group">
+          <div className="control-group date-group">
             <label>Test Date</label>
-            <input 
-              type="date" 
-              value={testDate} 
-              onChange={(e) => setTestDate(e.target.value)}
-            />
+            <div className="date-picker">
+              <input 
+                type="date" 
+                value={testDate} 
+                onChange={(e) => setTestDate(e.target.value)}
+                ref={dateInputRef}
+              />
+              <button 
+                type="button" 
+                className="icon-button" 
+                onClick={() => dateInputRef.current?.showPicker()}
+              >
+                <Calendar size={18} />
+              </button>
+            </div>
           </div>
 
-          <div className="control-group">
-            <label>Risk Factor</label>
-            <input 
-              type="number" 
-              value={riskFactor} 
-              onChange={(e) => setRiskFactor(parseFloat(e.target.value))}
-              min="0.5"
-              max="5"
-              step="0.5"
-            />
-          </div>
-
-          <div className="control-group">
-            <label>Risk:Reward</label>
-            <input 
-              type="number" 
-              value={riskReward} 
-              onChange={(e) => setRiskReward(parseFloat(e.target.value))}
-              min="1"
-              max="5"
-              step="0.5"
-            />
+          <div className="control-group risk-row">
+            <label>Risk Settings</label>
+            <div className="risk-sliders">
+              <div className="slider-control">
+                <span className="slider-label">Risk Factor: {riskFactor.toFixed(1)}x</span>
+                <input 
+                  type="range"
+                  min="0.5"
+                  max="5"
+                  step="0.5"
+                  value={riskFactor}
+                  onChange={(e) => setRiskFactor(parseFloat(e.target.value))}
+                />
+              </div>
+              <div className="slider-control">
+                <span className="slider-label">Risk:Reward {riskReward.toFixed(1)} : 1</span>
+                <input 
+                  type="range"
+                  min="1"
+                  max="5"
+                  step="0.5"
+                  value={riskReward}
+                  onChange={(e) => setRiskReward(parseFloat(e.target.value))}
+                />
+              </div>
+            </div>
           </div>
         </div>
 

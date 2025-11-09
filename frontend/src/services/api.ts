@@ -121,9 +121,13 @@ export interface PositionStats {
 }
 
 // API Functions
-export const getSignal = async (passcode: string, request: SignalRequest): Promise<SignalResponse> => {
+export const getSignal = async (
+  passcode: string,
+  request: SignalRequest,
+  signal?: AbortSignal
+): Promise<SignalResponse> => {
   const api = createApiClient(passcode)
-  const response = await api.post('/signals/current', request)
+  const response = await api.post('/signals/current', request, { signal })
   return response.data
 }
 
@@ -131,11 +135,13 @@ export const getHistoricalData = async (
   passcode: string,
   ticker: string,
   interval: string,
-  period: string
+  period: string,
+  signal?: AbortSignal
 ) => {
   const api = createApiClient(passcode)
   const response = await api.get('/signals/historical', {
     params: { ticker, interval, period },
+    signal,
   })
   return response.data
 }

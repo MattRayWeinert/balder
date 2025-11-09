@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useTransition, memo, useDeferredValue } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { getSignal, getHistoricalData, SignalRequest } from '../services/api'
+import { getSignal, getHistoricalData, SignalRequest, SignalResponse } from '../services/api'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import './TradingSignals.css'
@@ -15,6 +15,121 @@ const TICKERS = [
   "ZB=F", "ZN=F", "ZF=F", "ZT=F"
 ]
 
+interface SignalDetailsProps {
+  signalData: SignalResponse
+  ticker: string
+  interval: string
+  getSignalColor: () => string
+  getSignalIcon: () => JSX.Element | null
+}
+
+const SignalDetails = memo(({ signalData, ticker, interval, getSignalColor, getSignalIcon }: SignalDetailsProps) => (
+  <>
+    <div className="signal-card" style={{ borderColor: getSignalColor() }}>
+      <div className="signal-header">
+        {getSignalIcon()}
+        <div>
+          <h2>{signalData.signal || 'No Signal'}</h2>
+          <p className="text-muted">
+            {ticker} · {interval} · Last updated: {new Date(signalData.timestamp).toLocaleTimeString()}
+          </p>
+        </div>
+      </div>
+
+      {signalData.signal && (
+        <div className="signal-details">
+          <div className="detail-item">
+            <span className="label">Entry Price</span>
+            <span className="value">${signalData.entry?.toFixed(2)}</span>
+          </div>
+          <div className="detail-item">
+            <span className="label">Stop Loss</span>
+            <span className="value text-danger">${signalData.stop_loss?.toFixed(2)}</span>
+          </div>
+          <div className="detail-item">
+            <span className="label">Take Profit</span>
+            <span className="value text-success">${signalData.take_profit?.toFixed(2)}</span>
+          </div>
+          <div className="detail-item">
+            <span className="label">Confidence</span>
+            <span className="value">{signalData.confidence.toFixed(1)}%</span>
+          </div>
+        </div>
+      )}
+    </div>
+
+    <div className="card">
+      <h3>Technical Indicators</h3>
+      <div className="indicators-grid">
+        <div className="indicator-item">
+          <span className="indicator-label">Latest Price</span>
+          <span className="indicator-value">${signalData.latest_price?.toFixed(2) || 'N/A'}</span>
+        </div>
+        {signalData.indicators && (
+          <>
+            <div className="indicator-item">
+              <span className="indicator-label">RSI</span>
+              <span className="indicator-value">{signalData.indicators.RSI?.toFixed(2) || 'N/A'}</span>
+            </div>
+            <div className="indicator-item">
+              <span className="indicator-label">ATR</span>
+              <span className="indicator-value">{signalData.indicators.ATR?.toFixed(2) || 'N/A'}</span>
+            </div>
+            <div className="indicator-item">
+              <span className="indicator-label">ADX</span>
+              <span className="indicator-value">{signalData.indicators.ADX?.toFixed(2) || 'N/A'}</span>
+            </div>
+            <div className="indicator-item">
+              <span className="indicator-label">MACD Histogram</span>
+              <span className="indicator-value">{signalData.indicators.MACD_hist?.toFixed(4) || 'N/A'}</span>
+            </div>
+            <div className="indicator-item">
+              <span className="indicator-label">Volume</span>
+              <span className="indicator-value">{signalData.indicators.Volume?.toLocaleString() || 'N/A'}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  </>
+))
+
+SignalDetails.displayName = 'SignalDetails'
+
+interface PriceChartProps {
+  data: Array<Record<string, unknown>>
+}
+
+const PriceChart = memo(({ data }: PriceChartProps) => (
+  <div className="card">
+    <h3>Price Chart</h3>
+    <ResponsiveContainer width="100%" height={400}>
+      <LineChart data={data}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+        <XAxis 
+          dataKey="timestamp" 
+          stroke="#94a3b8"
+          tickFormatter={(value) => new Date(value as string).toLocaleTimeString()}
+        />
+        <YAxis stroke="#94a3b8" />
+        <Tooltip 
+          contentStyle={{ 
+            background: '#1e293b', 
+            border: '1px solid #334155',
+            borderRadius: '8px'
+          }}
+        />
+        <Legend />
+        <Line type="monotone" dataKey="close" stroke="#667eea" name="Close" />
+        <Line type="monotone" dataKey="ema_fast" stroke="#10b981" name="EMA Fast" />
+        <Line type="monotone" dataKey="ema_slow" stroke="#ef4444" name="EMA Slow" />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+))
+
+PriceChart.displayName = 'PriceChart'
+
 function TradingSignals({ passcode }: TradingSignalsProps) {
   const [ticker, setTicker] = useState('ES=F')
   const [interval, setInterval] = useState('2m')
@@ -23,6 +138,7 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
   const [autoRefresh, setAutoRefresh] = useState(false)
   const [refreshInterval, setRefreshInterval] = useState(30)
   const [sliderValue, setSliderValue] = useState(30) // Local state for slider
+  const [, startTransition] = useTransition()
 
   // Memoize the signal request to prevent unnecessary re-renders
   const signalRequest: SignalRequest = useMemo(() => ({
@@ -37,18 +153,18 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
     return autoRefresh ? refreshInterval * 1000 : false
   }, [autoRefresh, refreshInterval])
 
-  const { data: signalData, isLoading, error, refetch } = useQuery({
+  const { data: signalData, error, refetch, isFetching: isFetchingSignal } = useQuery({
     queryKey: ['signal', signalRequest],
-    queryFn: () => getSignal(passcode, signalRequest),
+    queryFn: ({ signal }) => getSignal(passcode, signalRequest, signal),
     refetchInterval: refetchIntervalMs,
     staleTime: 5000, // Prevent refetching within 5 seconds
     refetchOnMount: false, // Don't refetch on mount if data exists
     refetchOnWindowFocus: false, // Don't refetch when window regains focus
   })
 
-  const { data: historicalData } = useQuery({
+  const { data: historicalData, isFetching: isFetchingHistorical } = useQuery({
     queryKey: ['historical', ticker, interval],
-    queryFn: () => getHistoricalData(passcode, ticker, interval, '3d'),
+    queryFn: ({ signal }) => getHistoricalData(passcode, ticker, interval, '3d', signal),
     staleTime: 60000, // Cache for 60 seconds
     refetchInterval: false, // Don't auto-refetch historical data
     refetchOnMount: false, // Don't refetch on mount
@@ -68,6 +184,46 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
     return signalData.signal === 'Buy' ? 'var(--success)' : 'var(--danger)'
   }, [signalData?.signal])
 
+  const handleAutoRefreshChange = useCallback((checked: boolean) => {
+    setAutoRefresh(checked)
+    if (checked) {
+      setRefreshInterval(sliderValue)
+    }
+  }, [sliderValue])
+
+  const handleSliderChange = useCallback((value: number) => {
+    startTransition(() => {
+      setSliderValue(value)
+    })
+  }, [startTransition])
+
+  const handleSliderCommit = useCallback((value: number) => {
+    setRefreshInterval(value)
+  }, [])
+
+  const deferredSignalData = useDeferredValue(signalData)
+  const deferredHistoricalData = useDeferredValue(historicalData?.data)
+
+  const signalContent = useMemo(() => {
+    if (!deferredSignalData) return null
+    return (
+      <SignalDetails
+        signalData={deferredSignalData}
+        ticker={ticker}
+        interval={interval}
+        getSignalColor={getSignalColor}
+        getSignalIcon={getSignalIcon}
+      />
+    )
+  }, [deferredSignalData, ticker, interval, getSignalColor, getSignalIcon])
+
+  const chartContent = useMemo(() => {
+    if (!deferredHistoricalData) return null
+    return <PriceChart data={deferredHistoricalData} />
+  }, [deferredHistoricalData])
+
+  const isInitialLoading = (isFetchingSignal && !signalData) || (isFetchingHistorical && !historicalData?.data)
+
   return (
     <div className="trading-signals">
       <div className="page-header">
@@ -77,7 +233,8 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
             <input 
               type="checkbox" 
               checked={autoRefresh} 
-              onChange={(e) => setAutoRefresh(e.target.checked)}
+              onChange={(e) => handleAutoRefreshChange(e.target.checked)}
+              disabled={isInitialLoading}
             />
             <span>Auto-refresh</span>
           </label>
@@ -89,10 +246,10 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
               max="120"
               step="5"
               value={sliderValue}
-              onChange={(e) => setSliderValue(parseInt(e.target.value))}
-              onMouseUp={(e) => setRefreshInterval(parseInt((e.target as HTMLInputElement).value))}
-              onTouchEnd={(e) => setRefreshInterval(parseInt((e.target as HTMLInputElement).value))}
-              disabled={!autoRefresh}
+              onChange={(e) => handleSliderChange(parseInt(e.target.value))}
+              onMouseUp={(e) => handleSliderCommit(parseInt((e.target as HTMLInputElement).value))}
+              onTouchEnd={(e) => handleSliderCommit(parseInt((e.target as HTMLInputElement).value))}
+              disabled={!autoRefresh || isInitialLoading}
             />
           </div>
           <button onClick={() => refetch()} className="secondary">
@@ -122,37 +279,34 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
           </select>
         </div>
 
-        <div className="control-group">
-          <label>Risk Factor (ATR Multiplier)</label>
-          <input 
-            type="number" 
-            value={riskFactor} 
-            onChange={(e) => setRiskFactor(parseFloat(e.target.value))}
-            min="0.5"
-            max="5"
-            step="0.5"
-          />
-        </div>
-
-        <div className="control-group">
-          <label>Risk:Reward Ratio</label>
-          <input 
-            type="number" 
-            value={riskReward} 
-            onChange={(e) => setRiskReward(parseFloat(e.target.value))}
-            min="1"
-            max="5"
-            step="0.5"
-          />
+        <div className="control-group risk-row">
+          <label>Risk Settings</label>
+          <div className="risk-sliders">
+            <div className="slider-control">
+              <span className="slider-label">Risk Factor: {riskFactor.toFixed(1)}x</span>
+              <input 
+                type="range"
+                min="0.5"
+                max="5"
+                step="0.5"
+                value={riskFactor}
+                onChange={(e) => setRiskFactor(parseFloat(e.target.value))}
+              />
+            </div>
+            <div className="slider-control">
+              <span className="slider-label">Risk:Reward {riskReward.toFixed(1)} : 1</span>
+              <input 
+                type="range"
+                min="1"
+                max="5"
+                step="0.5"
+                value={riskReward}
+                onChange={(e) => setRiskReward(parseFloat(e.target.value))}
+              />
+            </div>
+          </div>
         </div>
       </div>
-
-      {isLoading && (
-        <div className="loading-container">
-          <div className="loading" />
-          <p>Loading signal data...</p>
-        </div>
-      )}
 
       {error && (
         <div className="error-box">
@@ -167,103 +321,21 @@ function TradingSignals({ passcode }: TradingSignalsProps) {
         </div>
       )}
 
-      {signalData && (
-        <>
-          <div className="signal-card" style={{ borderColor: getSignalColor() }}>
-            <div className="signal-header">
-              {getSignalIcon()}
-              <div>
-                <h2>{signalData.signal || 'No Signal'}</h2>
-                <p className="text-muted">
-                  {ticker} · {interval} · Last updated: {new Date(signalData.timestamp).toLocaleTimeString()}
-                </p>
-              </div>
-            </div>
-
-            {signalData.signal && (
-              <div className="signal-details">
-                <div className="detail-item">
-                  <span className="label">Entry Price</span>
-                  <span className="value">${signalData.entry?.toFixed(2)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="label">Stop Loss</span>
-                  <span className="value text-danger">${signalData.stop_loss?.toFixed(2)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="label">Take Profit</span>
-                  <span className="value text-success">${signalData.take_profit?.toFixed(2)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="label">Confidence</span>
-                  <span className="value">{signalData.confidence.toFixed(1)}%</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="card">
-            <h3>Technical Indicators</h3>
-            <div className="indicators-grid">
-              <div className="indicator-item">
-                <span className="indicator-label">Latest Price</span>
-                <span className="indicator-value">${signalData.latest_price?.toFixed(2) || 'N/A'}</span>
-              </div>
-              {signalData.indicators && (
-                <>
-                  <div className="indicator-item">
-                    <span className="indicator-label">RSI</span>
-                    <span className="indicator-value">{signalData.indicators.RSI?.toFixed(2) || 'N/A'}</span>
-                  </div>
-                  <div className="indicator-item">
-                    <span className="indicator-label">ATR</span>
-                    <span className="indicator-value">{signalData.indicators.ATR?.toFixed(2) || 'N/A'}</span>
-                  </div>
-                  <div className="indicator-item">
-                    <span className="indicator-label">ADX</span>
-                    <span className="indicator-value">{signalData.indicators.ADX?.toFixed(2) || 'N/A'}</span>
-                  </div>
-                  <div className="indicator-item">
-                    <span className="indicator-label">MACD Histogram</span>
-                    <span className="indicator-value">{signalData.indicators.MACD_hist?.toFixed(4) || 'N/A'}</span>
-                  </div>
-                  <div className="indicator-item">
-                    <span className="indicator-label">Volume</span>
-                    <span className="indicator-value">{signalData.indicators.Volume?.toLocaleString() || 'N/A'}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </>
+      {(isFetchingSignal && !signalData) && (
+        <div className="loading-container">
+          <div className="loading" />
+          <p>Loading signal data...</p>
+        </div>
       )}
 
-      {historicalData?.data && (
-        <div className="card">
-          <h3>Price Chart</h3>
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={historicalData.data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis 
-                dataKey="timestamp" 
-                stroke="#94a3b8"
-                tickFormatter={(value) => new Date(value).toLocaleTimeString()}
-              />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip 
-                contentStyle={{ 
-                  background: '#1e293b', 
-                  border: '1px solid #334155',
-                  borderRadius: '8px'
-                }}
-              />
-              <Legend />
-              <Line type="monotone" dataKey="close" stroke="#667eea" name="Close" />
-              <Line type="monotone" dataKey="ema_fast" stroke="#10b981" name="EMA Fast" />
-              <Line type="monotone" dataKey="ema_slow" stroke="#ef4444" name="EMA Slow" />
-            </LineChart>
-          </ResponsiveContainer>
+      {signalContent}
+
+      {(isFetchingHistorical && !historicalData?.data) ? (
+        <div className="card" style={{ minHeight: '420px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="loading" />
         </div>
+      ) : (
+        chartContent
       )}
     </div>
   )
